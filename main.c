@@ -2,52 +2,308 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include <stdlib.h>
+#include <time.h>
 
-#define SIZE 10
+#define SCALE 20
+
 
 #define SCREEN_WIDTH 600
 #define SCREEN_HEIGHT 600
+#define MAZE_WIDTH 10
+#define MAZE_HEIGHT 10
+
+typedef struct Cell{
+    int x, y, value;
+    struct Cell* pointed_at;
+}Cell;
+
+typedef struct Path{
+    Cell* caster_p;
+    Cell* target_p;
+    int valid;
+}Path;
 
 typedef struct Maze{
     int origin_x, origin_y;
     int size;
-    int** cells;
+    int num_paths;
+    Cell** cells;
+    Path* paths;
 }Maze;
 
-int main(int argc, char* argv[]){
+Cell* get_origin_cell(Maze* maze){
+    for (int i=0; i<maze->size; i++){
+        for (int j=0; j<maze->size; j++){
+            if (maze->cells[i][j].value == 1){
+                return &maze->cells[i][j];
+            }
+        }
+    }
+}
+
+Cell* get_previous_origin_cell(Maze* maze){
+    for (int i=0; i<maze->size; i++){
+        for (int j=0; j<maze->size; j++){
+            if (maze->cells[i][j].value == -1){
+                return &maze->cells[i][j];
+            }
+        }
+    }
+}
+
+void init_maze_paths(Maze* maze){
+    maze->num_paths = 0;
+    for (int i = 0; i < maze->size; i++){
+        for (int j = 0; j < maze->size; j++){
+            if (maze->cells[i][j].value != 1){
+                maze->paths[maze->num_paths].caster_p = &maze->cells[i][j];
+                if (maze->cells[i][j].pointed_at != NULL){
+                    maze->paths[maze->num_paths].target_p = maze->cells[i][j].pointed_at;
+                }else{
+                    maze->paths[maze->num_paths].target_p = NULL;
+                }
+                maze->paths[maze->num_paths].valid = 1;
+                maze->num_paths++;
+            }
+        }
+    }
+}
+
+void change_origin(Maze* maze){
+    Cell* origin = get_origin_cell(maze);
+    //printf("Origin {(%d,%d) ; value: %d ; is_casting: %d}\n", origin->x, origin->y, origin->value, origin->is_casting);
+    int direction = 0;
+    while (direction == 0){
+        direction = 1+rand()%4;
+        switch (direction){
+            case 1: //up
+                if (origin->y > 0){
+                    origin->value = 0;
+                    origin->pointed_at = &maze->cells[origin->y-1][origin->x];
+                    maze->cells[origin->y-1][origin->x].value = 1;
+                    maze->cells[origin->y-1][origin->x].pointed_at = NULL;
+                }else{
+                    direction = 0;
+                }
+                break;
+            case 2: //right
+                if (origin->x < maze->size - 1){
+                    origin->value = 0;
+                    origin->pointed_at = &maze->cells[origin->y][origin->x+1];
+                    maze->cells[origin->y][origin->x+1].value = 1;
+                    maze->cells[origin->y][origin->x+1].pointed_at = NULL;
+                }else{
+                    direction = 0;
+                }
+                break;
+            case 3: //down
+                if (origin->y < maze->size - 1){
+                    origin->value = 0;
+                    origin->pointed_at = &maze->cells[origin->y+1][origin->x];
+                    maze->cells[origin->y+1][origin->x].value = 1;
+                    maze->cells[origin->y+1][origin->x].pointed_at = NULL;
+                }else{
+                    direction = 0;
+                }
+                break;
+            case 4: //left
+                if (origin->x > 0){
+                    origin->value = 0;
+                    origin->pointed_at = &maze->cells[origin->y][origin->x-1];
+                    maze->cells[origin->y][origin->x-1].value = 1;
+                    maze->cells[origin->y][origin->x-1].pointed_at = NULL;
+                }else{
+                    direction = 0;
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    int updated_origin_path_1 = 0;
+    int updated_origin_path_2 = 0;
+
+    for (int i=0; i<(maze->size*maze->size); i++){
+        if (maze->paths[i].caster_p == origin){
+            maze->paths[i].target_p = origin->pointed_at;
+            updated_origin_path_1 = 1;
+        }else if (maze->paths[i].caster_p == &maze->cells[origin->y][origin->x-1]){
+            maze->paths[i].target_p = maze->cells[origin->y][origin->x-1].pointed_at;
+            updated_origin_path_2 = 1;
+        }
+
+        if (updated_origin_path_1 == 1 && updated_origin_path_2 == 1){
+            break;
+        }
+    }
+
+    if (updated_origin_path_1 != 1 || updated_origin_path_2 != 1){
+        printf("Could not find the specified paths.\n");
+        return;
+    }
+}
+
+void drawLargePoint(SDL_Renderer* renderer, float x, float y, float size) {
+    SDL_FRect rect = {
+        .x = x - size / 2.0f,
+        .y = y - size / 2.0f,
+        .w = size,
+        .h = size
+    };
+    SDL_RenderFillRect(renderer, &rect);
+}
+
+
+Maze* generate_maze(int size){
     Maze* maze = (Maze*)malloc(sizeof(Maze));
     if (maze == NULL){
         printf("Failed to allocate memory\n");
-        return EXIT_FAILURE;
+        return NULL;
     }
-    printf("Maze size: ");
-    int size;
-    scanf("%d", size);
-    maze->origin_x = 0;
-    maze->origin_y = 0;
     maze->size = size;
-    int** matrix = (int**)malloc(size*sizeof(int*));
-    if (matrix == NULL){
+    maze->origin_x = (SCREEN_WIDTH/2) - (maze->size*SCALE)/2;
+    maze->origin_y = (SCREEN_HEIGHT/2) - (maze->size*SCALE)/2;
+    //printf("maze origin point: (%d,%d)\n", maze->origin_x, maze->origin_y);
+
+    maze->cells = (Cell**)malloc(maze->size*sizeof(Cell*));
+    if (maze->cells == NULL){
         printf("Failed to allocate memory\n");
-        return EXIT_FAILURE;
+        return NULL;
     }
-    for (int i=0; i<size; i++){
-        matrix[i] = (int*)malloc(size*sizeof(int));
-        if (matrix[i] == NULL){
+    for (int i=0; i<maze->size; i++){
+        maze->cells[i] = (Cell*)malloc(maze->size*sizeof(Cell));
+        if (maze->cells[i] == NULL){
             printf("Failed to allocate memory\n");
-            return EXIT_FAILURE;
+            return NULL;
         }
-        for (int j=0; j<size; j++){
-            matrix[i][j] = 1;
-            printf("%d", matrix[i][j]);
+    }
+
+    for (int i=0; i<maze->size; i++){
+        for (int j=0; j<maze->size; j++){
+            maze->cells[i][j].x = j;
+            maze->cells[i][j].y = i;
+            maze->cells[i][j].value = 0;
+            maze->cells[i][j].pointed_at = NULL;
+            if (j<maze->size-1){
+                maze->cells[i][j].pointed_at = &maze->cells[i][j+1];
+            }else if (i<maze->size-1){
+                maze->cells[i][j].pointed_at = &maze->cells[i+1][j];
+            }else if ((j<maze->size) && (i<maze->size)){
+                maze->cells[i][j].value = 1;
+            }
         }
         printf("\n");
     }
-    for (int i=0; i<size; i++){
-        free(matrix[i]);
+
+    maze->paths = (Path*)malloc(((size*size)-1)*sizeof(Path));
+    if (maze->paths == NULL){
+        printf("Failed to allocate memory\n");
+        return NULL;
     }
-    free(matrix);
+
+    for (int i = 0; i < (size*size)-1; i++) {
+        maze->paths[i].caster_p = NULL;
+        maze->paths[i].target_p = NULL;
+        maze->paths[i].valid = 0;
+    }
+    maze->num_paths = 0;
+
+    init_maze_paths(maze);
+    return maze;
+}
+
+int main(int argc, char* argv[]){
+
+    SDL_Window *window;
+    int done = 0;
+
+    SDL_Init(SDL_INIT_VIDEO);
+
+    window = SDL_CreateWindow("Maze", SCREEN_WIDTH, SCREEN_HEIGHT, SDL_WINDOW_OPENGL);
+
+    if (window == NULL){
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Could not create window: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
+
+    if (renderer == NULL){
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Could not create renderer: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    Maze* maze = generate_maze(10);
+
+    if (maze == NULL){
+        printf("Failed to generate maze\n");
+        return EXIT_FAILURE;
+    }
+    while (!done){
+        SDL_Event event;
+
+        while (SDL_PollEvent(&event)){
+            switch (event.type){
+                case SDL_EVENT_QUIT:
+                    done = 1;
+                    break;
+                case SDL_EVENT_KEY_DOWN:
+                    if (event.key.key == SDLK_SPACE){
+                        change_origin(maze);
+                        //for (int i=0; i<maze->num_paths; i++){
+                            //printf("Path %d: c1 (%d,%d) c2 (%d,%d)\n", i, maze->paths[i].c1.x, maze->paths[i].c1.y, maze->paths[i].c2.x, maze->paths[i].c2.y);
+                        //}
+                        //printf("New origin: {(%d, %d) ; %d}\nOld origin: {(%d, %d) ; %d}\n", maze->origin_cell.x, maze->origin_cell.y, maze->origin_cell.value, maze->previous_origin_cell.x, maze->previous_origin_cell.y, maze->previous_origin_cell.value);
+                    }
+                default:
+                    break;
+            }
+        }
+
+        SDL_SetRenderDrawColor(renderer, 0, 100, 255, 255);
+        SDL_RenderClear(renderer);
+
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+
+        for (int i=0; i<maze->size; i++){
+            for (int j=0; j<maze->size; j++){
+                if (maze->cells[i][j].x == j && maze->cells[i][j].y == i && maze->cells[i][j].value == 1){
+                    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+                }else{
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                }
+                drawLargePoint(renderer, (float)maze->origin_x+(j*SCALE), (float)maze->origin_y+(i*SCALE), 4.0f);
+                
+            }
+        }
+        
+        for (int i = 0; i < maze->num_paths; i++) {
+            if (maze->paths[i].valid && maze->paths[i].target_p != NULL) {
+                SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+                SDL_RenderLine(
+                    renderer,
+                    maze->origin_x + (maze->paths[i].caster_p->x * SCALE),
+                    maze->origin_y + (maze->paths[i].caster_p->y * SCALE),
+                    maze->origin_x + (maze->paths[i].target_p->x * SCALE),
+                    maze->origin_y + (maze->paths[i].target_p->y * SCALE)
+                );
+            }
+        }
+        // SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        // SDL_RenderLine(renderer, SCREEN_WIDTH/2, 0, SCREEN_WIDTH/2, SCREEN_HEIGHT);
+        SDL_RenderPresent(renderer);
+    }
+
+    for (int i=0; i<maze->size; i++){
+        free(maze->cells[i]);
+    }
+    free(maze->cells);
+    free(maze->paths);
     free(maze);
+
+    SDL_DestroyWindow(window);
+    SDL_Quit();
 
     return 0;
 }
