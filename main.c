@@ -124,7 +124,7 @@ void change_origin(Maze* maze){
     int updated_origin_path_1 = 0;
     int updated_origin_path_2 = 0;
 
-    for (int i=0; i<(maze->size*maze->size); i++){
+    for (int i=0; i<(maze->size*maze->size)-1; i++){
         if (maze->paths[i].caster_p == origin){
             maze->paths[i].target_p = origin->pointed_at;
             updated_origin_path_1 = 1;
@@ -139,7 +139,7 @@ void change_origin(Maze* maze){
     }
 
     if (updated_origin_path_1 != 1 || updated_origin_path_2 != 1){
-        printf("Could not find the specified paths.\n");
+        printf("Could not find the specified paths. %d %d\n", updated_origin_path_1, updated_origin_path_2);
         return;
     }
 }
@@ -234,7 +234,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    Maze* maze = generate_maze(10);
+    Maze* maze = generate_maze(20);
 
     if (maze == NULL){
         printf("Failed to generate maze\n");
