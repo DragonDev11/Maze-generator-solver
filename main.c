@@ -20,13 +20,14 @@ typedef struct Cell{
 typedef struct Path{
     Cell* caster_p;
     Cell* target_p;
-    int valid;
 }Path;
 
 typedef struct Maze{
     int origin_x, origin_y;
     int size;
     int num_paths;
+    Cell* entrence;
+    Cell* exit;
     Cell** cells;
     Path* paths;
 }Maze;
@@ -55,16 +56,16 @@ void init_maze_paths(Maze* maze){
     maze->num_paths = 0;
     for (int i = 0; i < maze->size; i++){
         for (int j = 0; j < maze->size; j++){
+            maze->paths[maze->num_paths].caster_p = &maze->cells[i][j];
             if (maze->cells[i][j].value != 1){
-                maze->paths[maze->num_paths].caster_p = &maze->cells[i][j];
                 if (maze->cells[i][j].pointed_at != NULL){
                     maze->paths[maze->num_paths].target_p = maze->cells[i][j].pointed_at;
                 }else{
                     maze->paths[maze->num_paths].target_p = NULL;
                 }
-                maze->paths[maze->num_paths].valid = 1;
-                maze->num_paths++;
+                //maze->paths[maze->num_paths].valid = 1;
             }
+            maze->num_paths++;
         }
     }
 }
@@ -121,16 +122,44 @@ void change_origin(Maze* maze){
         }
     }
 
+    //printf("got the origin and picked a direction.\n");
+
     int updated_origin_path_1 = 0;
     int updated_origin_path_2 = 0;
 
-    for (int i=0; i<(maze->size*maze->size)-1; i++){
+    for (int i=0; i<(maze->size*maze->size); i++){
         if (maze->paths[i].caster_p == origin){
             maze->paths[i].target_p = origin->pointed_at;
             updated_origin_path_1 = 1;
-        }else if (maze->paths[i].caster_p == &maze->cells[origin->y][origin->x-1]){
-            maze->paths[i].target_p = maze->cells[origin->y][origin->x-1].pointed_at;
-            updated_origin_path_2 = 1;
+        }else{
+            switch (direction){
+                case 1: //up
+                    if (maze->paths[i].caster_p == &maze->cells[origin->y-1][origin->x]){
+                        maze->paths[i].target_p = maze->cells[origin->y-1][origin->x].pointed_at;
+                        updated_origin_path_2 = 1;
+                    }
+                    break;
+                case 2: //right
+                    if (maze->paths[i].caster_p == &maze->cells[origin->y][origin->x+1]){
+                        maze->paths[i].target_p = maze->cells[origin->y][origin->x+1].pointed_at;
+                        updated_origin_path_2 = 1;
+                    }
+                    break;
+                case 3: //down
+                    if (maze->paths[i].caster_p == &maze->cells[origin->y+1][origin->x]){
+                        maze->paths[i].target_p = maze->cells[origin->y+1][origin->x].pointed_at;
+                        updated_origin_path_2 = 1;
+                    }
+                    break;
+                case 4: //left
+                    if (maze->paths[i].caster_p == &maze->cells[origin->y][origin->x-1]){
+                        maze->paths[i].target_p = maze->cells[origin->y][origin->x-1].pointed_at;
+                        updated_origin_path_2 = 1;
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
 
         if (updated_origin_path_1 == 1 && updated_origin_path_2 == 1){
@@ -142,6 +171,8 @@ void change_origin(Maze* maze){
         printf("Could not find the specified paths. %d %d\n", updated_origin_path_1, updated_origin_path_2);
         return;
     }
+
+    //printf("right bottom corner cell:\n\tpointed_at->x: %d\n", maze->cells[maze->size-1][maze->size-1].pointed_at->x);
 }
 
 void drawLargePoint(SDL_Renderer* renderer, float x, float y, float size) {
@@ -164,6 +195,8 @@ Maze* generate_maze(int size){
     maze->size = size;
     maze->origin_x = (SCREEN_WIDTH/2) - (maze->size*SCALE)/2;
     maze->origin_y = (SCREEN_HEIGHT/2) - (maze->size*SCALE)/2;
+    maze->entrence = NULL;
+    maze->exit = NULL;
     //printf("maze origin point: (%d,%d)\n", maze->origin_x, maze->origin_y);
 
     maze->cells = (Cell**)malloc(maze->size*sizeof(Cell*));
@@ -196,17 +229,13 @@ Maze* generate_maze(int size){
         printf("\n");
     }
 
-    maze->paths = (Path*)malloc(((size*size)-1)*sizeof(Path));
+    maze->paths = (Path*)malloc(((size*size))*sizeof(Path));
     if (maze->paths == NULL){
         printf("Failed to allocate memory\n");
         return NULL;
     }
 
-    for (int i = 0; i < (size*size)-1; i++) {
-        maze->paths[i].caster_p = NULL;
-        maze->paths[i].target_p = NULL;
-        maze->paths[i].valid = 0;
-    }
+    
     maze->num_paths = 0;
 
     init_maze_paths(maze);
@@ -240,6 +269,7 @@ int main(int argc, char* argv[]){
         printf("Failed to generate maze\n");
         return EXIT_FAILURE;
     }
+
     while (!done){
         SDL_Event event;
 
@@ -250,11 +280,48 @@ int main(int argc, char* argv[]){
                     break;
                 case SDL_EVENT_KEY_DOWN:
                     if (event.key.key == SDLK_SPACE){
-                        change_origin(maze);
+                        for (int i=0; i<(maze->size*maze->size*10); i++){
+                            change_origin(maze);
+                        }
                         //for (int i=0; i<maze->num_paths; i++){
                             //printf("Path %d: c1 (%d,%d) c2 (%d,%d)\n", i, maze->paths[i].c1.x, maze->paths[i].c1.y, maze->paths[i].c2.x, maze->paths[i].c2.y);
                         //}
                         //printf("New origin: {(%d, %d) ; %d}\nOld origin: {(%d, %d) ; %d}\n", maze->origin_cell.x, maze->origin_cell.y, maze->origin_cell.value, maze->previous_origin_cell.x, maze->previous_origin_cell.y, maze->previous_origin_cell.value);
+                    }
+                    if (event.key.key == SDLK_0){
+                        if (maze->entrence != NULL && maze->exit != NULL){
+                                maze->entrence->value = 0;
+                                maze->exit->value = 0;
+                        }else{
+                            maze->entrence = (Cell*)malloc(sizeof(Cell));
+                            maze->exit = (Cell*)malloc(sizeof(Cell));
+
+                            if (maze->exit == NULL || maze->entrence == NULL){
+                                printf("Failed to allocate memory\n");
+                                return EXIT_FAILURE;
+                            }
+                        }
+
+                        int random_x=0, random_y=0;
+
+                        do{
+                            random_x = rand()%maze->size;
+                            random_y = rand()%maze->size;
+                        }while(maze->cells[random_y][random_x].value == 1);
+
+                        maze->entrence = &maze->cells[random_y][random_x];
+                        maze->entrence->value = 2;
+
+                        do{
+                            random_x = rand()%maze->size;
+                            random_y = rand()%maze->size;
+                        }while(maze->cells[random_y][random_x].value == 1);
+
+                        maze->exit = &maze->cells[random_y][random_x];
+                        maze->exit->value = 3;
+                    }
+                    if (event.key.key == SDLK_ESCAPE){
+                        done = 1;
                     }
                 default:
                     break;
@@ -268,10 +335,21 @@ int main(int argc, char* argv[]){
 
         for (int i=0; i<maze->size; i++){
             for (int j=0; j<maze->size; j++){
-                if (maze->cells[i][j].x == j && maze->cells[i][j].y == i && maze->cells[i][j].value == 1){
-                    SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
-                }else{
-                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                if (maze->cells[i][j].x == j && maze->cells[i][j].y == i){
+                    switch (maze->cells[i][j].value){
+                        case 1:
+                            SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+                            break;
+                        case 2:
+                            SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+                            break;
+                        case 3:
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+                            break;
+                        default:
+                            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                            break;
+                    }
                 }
                 drawLargePoint(renderer, (float)maze->origin_x+(j*SCALE), (float)maze->origin_y+(i*SCALE), 4.0f);
                 
@@ -279,8 +357,8 @@ int main(int argc, char* argv[]){
         }
         
         for (int i = 0; i < maze->num_paths; i++) {
-            if (maze->paths[i].valid && maze->paths[i].target_p != NULL) {
-                SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            if (maze->paths[i].target_p != NULL) {
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderLine(
                     renderer,
                     maze->origin_x + (maze->paths[i].caster_p->x * SCALE),
@@ -300,6 +378,8 @@ int main(int argc, char* argv[]){
     }
     free(maze->cells);
     free(maze->paths);
+    free(maze->entrence);
+    free(maze->exit);
     free(maze);
 
     SDL_DestroyWindow(window);
