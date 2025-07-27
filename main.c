@@ -6,46 +6,159 @@
 
 #define SCALE 20
 
+#define UP 1
+#define RIGHT 2
+#define DOWN 3
+#define LEFT 4
 
-#define SCREEN_WIDTH 600
-#define SCREEN_HEIGHT 600
+#define SCREEN_WIDTH 1000
+#define SCREEN_HEIGHT 800
 #define MAZE_WIDTH 10
 #define MAZE_HEIGHT 10
 
 typedef struct Cell{
     int x, y, value;
-    struct Cell* pointed_at;
+    int visited;
+    struct Cell* pointed_at_cell;
 }Cell;
 
 typedef struct Path{
     Cell* caster_p;
     Cell* target_p;
+    int highlighted;
 }Path;
 
 typedef struct Maze{
     int origin_x, origin_y;
     int size;
     int num_paths;
-    Cell* entrence;
+    Cell* entrance;
     Cell* exit;
     Cell** cells;
     Path* paths;
 }Maze;
 
+Cell** get_neighbours(Maze* maze, Cell* cell, int* count){
+    printf("getting neighbours...\n");
+    int size = 0;
+    Cell** neighbours = NULL;
+
+    if (cell->y+1 < maze->size){
+        if (maze->cells[cell->y+1][cell->x].pointed_at_cell == cell || cell->pointed_at_cell == &maze->cells[cell->y+1][cell->x]){
+            neighbours = (Cell**)realloc(neighbours, (size+1)*sizeof(Cell*));
+            if (neighbours == NULL){
+                printf("Failed to re-allocate memory.\n");
+                return NULL;
+            }
+            neighbours[size] = &maze->cells[cell->y+1][cell->x];
+            size++;
+        }
+    }
+
+    if (cell->y >= 0){
+        if (maze->cells[cell->y-1][cell->x].pointed_at_cell == cell || cell->pointed_at_cell == &maze->cells[cell->y-1][cell->x]){
+            neighbours = (Cell**)realloc(neighbours, (size+1)*sizeof(Cell*));
+            if (neighbours == NULL){
+                printf("Failed to re-allocate memory.\n");
+                return NULL;
+            }
+            neighbours[size] = &maze->cells[cell->y-1][cell->x];
+            size++;
+        }
+    }
+
+    if (cell->x+1 < maze->size){
+        if (maze->cells[cell->y][cell->x+1].pointed_at_cell == cell || cell->pointed_at_cell == &maze->cells[cell->y][cell->x+1]){
+            neighbours = (Cell**)realloc(neighbours, (size+1)*sizeof(Cell*));
+            if (neighbours == NULL){
+                printf("Failed to re-allocate memory.\n");
+                return NULL;
+            }
+            neighbours[size] = &maze->cells[cell->y][cell->x+1];
+            size++;
+        }
+    }
+
+    if (cell->x-1 >= 0){
+        if (maze->cells[cell->y][cell->x-1].pointed_at_cell == cell || cell->pointed_at_cell == &maze->cells[cell->y][cell->x-1]){
+            neighbours = (Cell**)realloc(neighbours, (size+1)*sizeof(Cell*));
+            if (neighbours == NULL){
+                printf("Failed to re-allocate memory.\n");
+                return NULL;
+            }
+            neighbours[size] = &maze->cells[cell->y][cell->x-1];
+            size++;
+        } 
+    }
+
+    *count = size;
+    return neighbours;
+}
+
+int DFS(Maze* maze, Cell* cell, Cell*** correct_pathway, int* path_size){
+    printf("DFS...\n");
+    cell->visited = 1;
+    (*correct_pathway)[*path_size] = cell;
+    (*path_size)++;
+
+    if (cell == maze->exit){
+        return 1;
+    }
+
+    int neighbours_count;
+    Cell** neighbours = get_neighbours(maze, cell, &neighbours_count);
+
+    for (int i=0; i<neighbours_count; i++){
+        if (neighbours[i]->visited == 0){
+            if (DFS(maze, neighbours[i], correct_pathway, path_size)){
+                free(neighbours);
+                return 1;
+            }
+        }
+    }
+
+    (*correct_pathway)[*path_size] = NULL;
+    (*path_size)--;
+
+    return 0;
+}
+
+Path** solve(Maze* maze){
+    printf("Solving...\n");
+    Path** correct_path = NULL;
+    Cell** correct_cells = (Cell**)malloc(sizeof(Cell*)*maze->size*maze->size);
+    if (correct_cells == NULL){
+        printf("Failed to allocate memory.\n");
+        return NULL;
+    }
+    Cell* current_cell = maze->entrance;
+
+    int size = 0;
+
+    if (DFS(maze, current_cell, &correct_cells, &size) == 1){
+        printf("Maze solved!\n");
+        if (size > 1){
+            correct_path = (Path**)malloc((size-1)*sizeof(Path*));
+            if (correct_path == NULL){
+                printf("Failed to allocate memory.\n");
+                return NULL;
+            }
+            // no idea
+        }
+
+        for (int i=0; i<size; i++){
+            if (correct_cells[i]->value == 0) correct_cells[i]->value = 5;
+        }
+    }
+    free(correct_path);
+    free(correct_cells);
+    return NULL;
+}
+
 Cell* get_origin_cell(Maze* maze){
     for (int i=0; i<maze->size; i++){
         for (int j=0; j<maze->size; j++){
             if (maze->cells[i][j].value == 1){
-                return &maze->cells[i][j];
-            }
-        }
-    }
-}
-
-Cell* get_previous_origin_cell(Maze* maze){
-    for (int i=0; i<maze->size; i++){
-        for (int j=0; j<maze->size; j++){
-            if (maze->cells[i][j].value == -1){
                 return &maze->cells[i][j];
             }
         }
@@ -58,8 +171,8 @@ void init_maze_paths(Maze* maze){
         for (int j = 0; j < maze->size; j++){
             maze->paths[maze->num_paths].caster_p = &maze->cells[i][j];
             if (maze->cells[i][j].value != 1){
-                if (maze->cells[i][j].pointed_at != NULL){
-                    maze->paths[maze->num_paths].target_p = maze->cells[i][j].pointed_at;
+                if (maze->cells[i][j].pointed_at_cell != NULL){
+                    maze->paths[maze->num_paths].target_p = maze->cells[i][j].pointed_at_cell;
                 }else{
                     maze->paths[maze->num_paths].target_p = NULL;
                 }
@@ -72,47 +185,55 @@ void init_maze_paths(Maze* maze){
 
 void change_origin(Maze* maze){
     Cell* origin = get_origin_cell(maze);
+    for (int i=0; i<maze->size; i++){
+        for (int j=0; j<maze->size; j++){
+            maze->cells[i][j].visited = 0;
+            if (maze->cells[i][j].value != 1){
+                maze->cells[i][j].value = 0;
+            }
+        }
+    }
     //printf("Origin {(%d,%d) ; value: %d ; is_casting: %d}\n", origin->x, origin->y, origin->value, origin->is_casting);
     int direction = 0;
     while (direction == 0){
         direction = 1+rand()%4;
         switch (direction){
-            case 1: //up
+            case UP: //up
                 if (origin->y > 0){
                     origin->value = 0;
-                    origin->pointed_at = &maze->cells[origin->y-1][origin->x];
+                    origin->pointed_at_cell = &maze->cells[origin->y-1][origin->x];
                     maze->cells[origin->y-1][origin->x].value = 1;
-                    maze->cells[origin->y-1][origin->x].pointed_at = NULL;
+                    maze->cells[origin->y-1][origin->x].pointed_at_cell = NULL;
                 }else{
                     direction = 0;
                 }
                 break;
-            case 2: //right
+            case RIGHT: //right
                 if (origin->x < maze->size - 1){
                     origin->value = 0;
-                    origin->pointed_at = &maze->cells[origin->y][origin->x+1];
+                    origin->pointed_at_cell = &maze->cells[origin->y][origin->x+1];
                     maze->cells[origin->y][origin->x+1].value = 1;
-                    maze->cells[origin->y][origin->x+1].pointed_at = NULL;
+                    maze->cells[origin->y][origin->x+1].pointed_at_cell = NULL;
                 }else{
                     direction = 0;
                 }
                 break;
-            case 3: //down
+            case DOWN: //down
                 if (origin->y < maze->size - 1){
                     origin->value = 0;
-                    origin->pointed_at = &maze->cells[origin->y+1][origin->x];
+                    origin->pointed_at_cell = &maze->cells[origin->y+1][origin->x];
                     maze->cells[origin->y+1][origin->x].value = 1;
-                    maze->cells[origin->y+1][origin->x].pointed_at = NULL;
+                    maze->cells[origin->y+1][origin->x].pointed_at_cell = NULL;
                 }else{
                     direction = 0;
                 }
                 break;
-            case 4: //left
+            case LEFT: //left
                 if (origin->x > 0){
                     origin->value = 0;
-                    origin->pointed_at = &maze->cells[origin->y][origin->x-1];
+                    origin->pointed_at_cell = &maze->cells[origin->y][origin->x-1];
                     maze->cells[origin->y][origin->x-1].value = 1;
-                    maze->cells[origin->y][origin->x-1].pointed_at = NULL;
+                    maze->cells[origin->y][origin->x-1].pointed_at_cell = NULL;
                 }else{
                     direction = 0;
                 }
@@ -129,31 +250,31 @@ void change_origin(Maze* maze){
 
     for (int i=0; i<(maze->size*maze->size); i++){
         if (maze->paths[i].caster_p == origin){
-            maze->paths[i].target_p = origin->pointed_at;
+            maze->paths[i].target_p = origin->pointed_at_cell;
             updated_origin_path_1 = 1;
         }else{
             switch (direction){
-                case 1: //up
+                case UP: //up
                     if (maze->paths[i].caster_p == &maze->cells[origin->y-1][origin->x]){
-                        maze->paths[i].target_p = maze->cells[origin->y-1][origin->x].pointed_at;
+                        maze->paths[i].target_p = maze->cells[origin->y-1][origin->x].pointed_at_cell;
                         updated_origin_path_2 = 1;
                     }
                     break;
-                case 2: //right
+                case RIGHT: //right
                     if (maze->paths[i].caster_p == &maze->cells[origin->y][origin->x+1]){
-                        maze->paths[i].target_p = maze->cells[origin->y][origin->x+1].pointed_at;
+                        maze->paths[i].target_p = maze->cells[origin->y][origin->x+1].pointed_at_cell;
                         updated_origin_path_2 = 1;
                     }
                     break;
-                case 3: //down
+                case DOWN: //down
                     if (maze->paths[i].caster_p == &maze->cells[origin->y+1][origin->x]){
-                        maze->paths[i].target_p = maze->cells[origin->y+1][origin->x].pointed_at;
+                        maze->paths[i].target_p = maze->cells[origin->y+1][origin->x].pointed_at_cell;
                         updated_origin_path_2 = 1;
                     }
                     break;
-                case 4: //left
+                case LEFT: //left
                     if (maze->paths[i].caster_p == &maze->cells[origin->y][origin->x-1]){
-                        maze->paths[i].target_p = maze->cells[origin->y][origin->x-1].pointed_at;
+                        maze->paths[i].target_p = maze->cells[origin->y][origin->x-1].pointed_at_cell;
                         updated_origin_path_2 = 1;
                     }
                     break;
@@ -172,7 +293,7 @@ void change_origin(Maze* maze){
         return;
     }
 
-    //printf("right bottom corner cell:\n\tpointed_at->x: %d\n", maze->cells[maze->size-1][maze->size-1].pointed_at->x);
+    //printf("right bottom corner cell:\n\tpointed_at->x: %d\n", maze->cells[maze->size-1][maze->size-1].pointed_at_cell->x);
 }
 
 void drawLargePoint(SDL_Renderer* renderer, float x, float y, float size) {
@@ -195,7 +316,7 @@ Maze* generate_maze(int size){
     maze->size = size;
     maze->origin_x = (SCREEN_WIDTH/2) - (maze->size*SCALE)/2;
     maze->origin_y = (SCREEN_HEIGHT/2) - (maze->size*SCALE)/2;
-    maze->entrence = NULL;
+    maze->entrance = NULL;
     maze->exit = NULL;
     //printf("maze origin point: (%d,%d)\n", maze->origin_x, maze->origin_y);
 
@@ -217,11 +338,11 @@ Maze* generate_maze(int size){
             maze->cells[i][j].x = j;
             maze->cells[i][j].y = i;
             maze->cells[i][j].value = 0;
-            maze->cells[i][j].pointed_at = NULL;
+            maze->cells[i][j].pointed_at_cell = NULL;
             if (j<maze->size-1){
-                maze->cells[i][j].pointed_at = &maze->cells[i][j+1];
+                maze->cells[i][j].pointed_at_cell = &maze->cells[i][j+1];
             }else if (i<maze->size-1){
-                maze->cells[i][j].pointed_at = &maze->cells[i+1][j];
+                maze->cells[i][j].pointed_at_cell = &maze->cells[i+1][j];
             }else if ((j<maze->size) && (i<maze->size)){
                 maze->cells[i][j].value = 1;
             }
@@ -263,7 +384,7 @@ int main(int argc, char* argv[]){
         return 1;
     }
 
-    Maze* maze = generate_maze(20);
+    Maze* maze = generate_maze(30);
 
     if (maze == NULL){
         printf("Failed to generate maze\n");
@@ -289,14 +410,14 @@ int main(int argc, char* argv[]){
                         //printf("New origin: {(%d, %d) ; %d}\nOld origin: {(%d, %d) ; %d}\n", maze->origin_cell.x, maze->origin_cell.y, maze->origin_cell.value, maze->previous_origin_cell.x, maze->previous_origin_cell.y, maze->previous_origin_cell.value);
                     }
                     if (event.key.key == SDLK_0){
-                        if (maze->entrence != NULL && maze->exit != NULL){
-                                maze->entrence->value = 0;
+                        if (maze->entrance != NULL && maze->exit != NULL){
+                                maze->entrance->value = 0;
                                 maze->exit->value = 0;
                         }else{
-                            maze->entrence = (Cell*)malloc(sizeof(Cell));
+                            maze->entrance = (Cell*)malloc(sizeof(Cell));
                             maze->exit = (Cell*)malloc(sizeof(Cell));
 
-                            if (maze->exit == NULL || maze->entrence == NULL){
+                            if (maze->exit == NULL || maze->entrance == NULL){
                                 printf("Failed to allocate memory\n");
                                 return EXIT_FAILURE;
                             }
@@ -309,8 +430,8 @@ int main(int argc, char* argv[]){
                             random_y = rand()%maze->size;
                         }while(maze->cells[random_y][random_x].value == 1);
 
-                        maze->entrence = &maze->cells[random_y][random_x];
-                        maze->entrence->value = 2;
+                        maze->entrance = &maze->cells[random_y][random_x];
+                        maze->entrance->value = 2;
 
                         do{
                             random_x = rand()%maze->size;
@@ -320,9 +441,13 @@ int main(int argc, char* argv[]){
                         maze->exit = &maze->cells[random_y][random_x];
                         maze->exit->value = 3;
                     }
+                    if (event.key.key == SDLK_9){
+                        if (maze->entrance != NULL && maze->exit != NULL) solve(maze);
+                    }
                     if (event.key.key == SDLK_ESCAPE){
                         done = 1;
                     }
+
                 default:
                     break;
             }
@@ -345,6 +470,9 @@ int main(int argc, char* argv[]){
                             break;
                         case 3:
                             SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+                            break;
+                        case 5:
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                             break;
                         default:
                             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -378,7 +506,7 @@ int main(int argc, char* argv[]){
     }
     free(maze->cells);
     free(maze->paths);
-    free(maze->entrence);
+    free(maze->entrance);
     free(maze->exit);
     free(maze);
 
