@@ -55,7 +55,7 @@ Cell** get_neighbours(Maze* maze, Cell* cell, int* count){
         }
     }
 
-    if (cell->y >= 0){
+    if (cell->y-1 >= 0){
         if (maze->cells[cell->y-1][cell->x].pointed_at_cell == cell || cell->pointed_at_cell == &maze->cells[cell->y-1][cell->x]){
             neighbours = (Cell**)realloc(neighbours, (size+1)*sizeof(Cell*));
             if (neighbours == NULL){
@@ -107,19 +107,26 @@ int DFS(Maze* maze, Cell* cell, Cell*** correct_pathway, int* path_size){
 
     int neighbours_count;
     Cell** neighbours = get_neighbours(maze, cell, &neighbours_count);
+    if (neighbours == NULL){
+        printf("Failed to get the neighbours.\n");
+        return 0;
+    }
 
     for (int i=0; i<neighbours_count; i++){
         if (neighbours[i]->visited == 0){
-            if (DFS(maze, neighbours[i], correct_pathway, path_size)){
+            printf("Checking neighbour %d...\n", i);
+            if (DFS(maze, neighbours[i], correct_pathway, path_size) == 1){
+                printf("Found exit.\n");
                 free(neighbours);
                 return 1;
             }
         }
     }
 
-    (*correct_pathway)[*path_size] = NULL;
     (*path_size)--;
-
+    (*correct_pathway)[*path_size] = NULL;
+    printf("Dead end.\n");
+    free(neighbours);
     return 0;
 }
 
@@ -150,6 +157,8 @@ Path** solve(Maze* maze){
             if (correct_cells[i]->value == 0) correct_cells[i]->value = 5;
         }
     }
+
+    printf("path size: %d\n", size);
     free(correct_path);
     free(correct_cells);
     return NULL;
@@ -391,7 +400,12 @@ int main(int argc, char* argv[]){
         return EXIT_FAILURE;
     }
 
+    int auto_ = 0;
+
     while (!done){
+        if (auto_ == 1){
+            change_origin(maze);
+        }
         SDL_Event event;
 
         while (SDL_PollEvent(&event)){
@@ -401,15 +415,23 @@ int main(int argc, char* argv[]){
                     break;
                 case SDL_EVENT_KEY_DOWN:
                     if (event.key.key == SDLK_SPACE){
-                        for (int i=0; i<(maze->size*maze->size*10); i++){
-                            change_origin(maze);
-                        }
+                        //for (int i=0; i<(maze->size*maze->size*10); i++){
+                            auto_ = !auto_;
+                        //}
                         //for (int i=0; i<maze->num_paths; i++){
                             //printf("Path %d: c1 (%d,%d) c2 (%d,%d)\n", i, maze->paths[i].c1.x, maze->paths[i].c1.y, maze->paths[i].c2.x, maze->paths[i].c2.y);
                         //}
                         //printf("New origin: {(%d, %d) ; %d}\nOld origin: {(%d, %d) ; %d}\n", maze->origin_cell.x, maze->origin_cell.y, maze->origin_cell.value, maze->previous_origin_cell.x, maze->previous_origin_cell.y, maze->previous_origin_cell.value);
                     }
                     if (event.key.key == SDLK_0){
+                        for (int i=0; i<maze->size; i++){
+                            for (int j=0; j<maze->size; j++){
+                                maze->cells[i][j].visited = 0;
+                                if (maze->cells[i][j].value != 1){
+                                    maze->cells[i][j].value = 0;
+                                }
+                            }
+                        }
                         if (maze->entrance != NULL && maze->exit != NULL){
                                 maze->entrance->value = 0;
                                 maze->exit->value = 0;
